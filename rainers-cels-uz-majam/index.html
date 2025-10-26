@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>Rainers: Ceļš uz mājām — BB/VO/rip + Cīgas</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin:0; height:100%; background:#04070d; color:#eaf2ff; font-family:system-ui, Segoe UI, Roboto, Arial, sans-serif; overflow:hidden; }
+    #game { position:fixed; inset:0; display:block; background:#0b1222; }
+
+    /* HUD augšā, centrēts */
+    .hud {
+      position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:10;
+      display:flex; gap:18px; align-items:center; flex-wrap:wrap; justify-content:center;
+      background:rgba(0,0,0,0.35);
+      padding:8px 14px; border-radius:12px; backdrop-filter: blur(4px);
+      font-weight:700;
+    }
+    .hud .hint { font-weight:600; opacity:.85; }
+
+    /* Overlays – centrā */
+    .overlay {
+      position:fixed; inset:0; z-index:20; display:grid; place-items:center;
+      background:rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+      text-align:center; padding:24px; opacity:0; pointer-events:none; transition:.2s ease;
+    }
+    .overlay.show { opacity:1; pointer-events:auto; }
+
+    .panel { width:min(760px,92vw); margin:0 auto; padding:20px 16px; }
+    .panel h1, .panel h2 { margin:0 0 10px; line-height:1.18; }
+    .panel p  { margin:8px 0 14px; opacity:.92; }
+    .row      { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+
+    button {
+      padding:10px 16px; border:0; border-radius:10px; cursor:pointer; font-weight:800;
+      color:#072015; background:linear-gradient(135deg,#5ac8fa,#34c759);
+      box-shadow:0 8px 24px rgba(52,199,89,.25);
+    }
+    button:hover  { filter:brightness(1.06); }
+    button:active { transform:translateY(1px); }
+    button[disabled] { opacity:.55; cursor:not-allowed; }
+
+    /* Karte */
+    #map canvas {
+      background:#09131f; border-radius:12px;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
+      max-width:min(1100px, 95vw); height:auto;
+    }
+
+    /* Veikals */
+    .shop {
+      margin-top:14px; padding:12px;
+      background:rgba(0,0,0,0.35); border-radius:12px;
+    }
+    .shop h3 { margin:0 0 10px; }
+    .shop-grid {
+      display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px;
+    }
+    .card { background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; text-align:left; }
+    .card h4 { margin:0 0 6px; }
+    .price { font-weight:800; color:#ffd54f; }
+    .buy   { margin-top:8px; width:100%; }
+
+    @media (max-width:480px){
+      .panel h1 { font-size:1.55rem; }
+      .panel h2 { font-size:1.3rem; }
+      .hud { gap:10px; font-size:.96rem; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- HUD augšā -->
+  <div class="hud" id="hud">
+    <div>Punkti: <b id="score">0</b></div>
+    <div>Rekords: <b id="best">0</b></div>
+    <div>Cīgas: <b id="money">0</b></div>
+    <div class="hint">← → vai A/D • SPACE lēciens • P pauze • M karte</div>
+  </div>
+
+  <!-- Start -->
+  <div id="start" class="overlay show">
+    <div class="panel">
+      <h1>Rainers: Ceļš uz mājām</h1>
+      <p>Izvairies no šķēršļiem, krāj naudu. <b>Cīgas</b> krīt lēnāk un ļoti reti.</p>
+      <div class="row">
+        <button id="btnPlay">Sākt skrējienu</button>
+        <button id="btnMap">Karte</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Over + Veikals -->
+  <div id="over" class="overlay">
+    <div class="panel">
+      <h2>Spēle beigusies</h2>
+      <p>Distance: <b id="finalDist">0 m</b> • <b>Cīgas šajā skrējienā:</b> <b id="finalCoins">0</b></p>
+      <p>Bilance (Nauda): <b id="moneyNow">0</b></p>
+
+      <div class="shop">
+        <h3>Nopērc palīglīdzekļus nākamajam skrējienam</h3>
+        <div class="shop-grid">
+          <div class="card">
+            <h4>🛡️ Aizbildinājums, ka rīt darbs (1 trāpījums)</h4>
+            <p>Pirmā sadursme nepārtrauks skrējienu.</p>
+            <div class="price">Cīgas: 20</div>
+            <button class="buy" data-item="shield" data-price="20">Pirkt</button>
+          </div>
+          <div class="card">
+            <h4>🧲 Ieslēdz striļītāju (10 s)</h4>
+            <p>Pievilk <b>cīgas</b> tuvumā 15 sekunžu garumā.</p>
+            <div class="price">Cīgas: 30</div>
+            <button class="buy" data-item="magnet" data-price="30">Pirkt</button>
+          </div>
+          <div class="card">
+            <h4>💰 Dubultā cīgu paciņa</h4>
+            <p><b>Cīgas</b> šajā skrējienā skaitās x2.</p>
+            <div class="price">Cīgas: 40</div>
+            <button class="buy" data-item="double" data-price="40">Pirkt</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <button id="btnRetry">Spēlēt vēlreiz</button>
+        <button id="btnToMap">Uz karti</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Karte -->
+  <div id="map" class="overlay">
+    <div class="panel">
+      <h2>Pasaules karte</h2>
+      <canvas id="mapCanvas" width="1100" height="620"></canvas>
+      <p>Progress: <b id="mapProgress">0%</b> &nbsp;•&nbsp; Atlikušais: <b id="mapRemain">0 m</b></p>
+      <div class="row">
+        <button id="btnRunFromMap">Sākt skrējienu</button>
+        <button id="btnReset">Atiestatīt progresu</button>
+        <button id="btnBack">Atpakaļ</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== Kanva =====
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d', { alpha:false });
+    function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; }
+    addEventListener('resize', resize); resize();
+
+    // ===== UI =====
+    const UI = {
+      start: document.getElementById('start'),
+      over: document.getElementById('over'),
+      map: document.getElementById('map'),
+      btnPlay: document.getElementById('btnPlay'),
+      btnMap: document.getElementById('btnMap'),
+      btnRetry: document.getElementById('btnRetry'),
+      btnToMap: document.getElementById('btnToMap'),
+      btnRunFromMap: document.getElementById('btnRunFromMap'),
+      btnReset: document.getElementById('btnReset'),
+      btnBack: document.getElementById('btnBack'),
+      score: document.getElementById('score'),
+      best: document.getElementById('best'),
+      money: document.getElementById('money'),
+      finalDist: document.getElementById('finalDist'),
+      finalCoins: document.getElementById('finalCoins'),
+      moneyNow: document.getElementById('moneyNow'),
+      mapCanvas: document.getElementById('mapCanvas'),
+      mapProgress: document.getElementById('mapProgress'),
+      mapRemain: document.getElementById('mapRemain'),
+    };
+
+    // ===== Stāvoklis / progress =====
+    const STATE = { mode:'menu' };
+    const JOURNEY = {
+      total: 5000,
+      progress: Number(localStorage.getItem('rainers_progress') || 0),
+      money:    Number(localStorage.getItem('rainers_money')    || 0),
+      best:     Number(localStorage.getItem('rainers_best')     || 0),
+    };
+    UI.best.textContent = JOURNEY.best;
+
+    function saveJourney(){
+      localStorage.setItem('rainers_progress', JOURNEY.progress);
+      localStorage.setItem('rainers_money',    JOURNEY.money);
+      localStorage.setItem('rainers_best',     JOURNEY.best);
+    }
+
+    // ===== Konfigurācija =====
+    const CFG = {
+      groundH:140, laneGap:180, laneCount:3,
+      initSpeed:380, speedGain:22, gravity:2200, jumpV:920,
+      obstacleEvery:0.85,
+      coinEvery:5.5,            // 10x retāk
+      maxObstacles:8, maxCoins:20,
+      coinScrollRatio: 0.6,     // cīgas krīt lēnāk
+      magnetRadius: 200, magnetPull: 700,
+
+      // >>> JAUNS: barjeru ātruma reizinātājs (VO.png)
+      barrierSpeedMult: 1.35
+    };
+
+    // ===== Attēli =====
+    // Galvas bilde
+    const headImg = new Image(); headImg.src='Rain.png'; let headReady=false;
+    headImg.onload=()=> headReady=true;
+    headImg.onerror=()=> console.warn('Neizdevās ielādēt Rain.png');
+
+    // Obstaklu bildes
+    const imgBB  = new Image(); imgBB.src='BB.png';  let bbReady=false;  imgBB.onload=()=> bbReady=true;
+    const imgVO  = new Image(); imgVO.src='VO.png';  let voReady=false;  imgVO.onload=()=> voReady=true;
+    const imgRip = new Image(); imgRip.src='rip.png';let ripReady=false; imgRip.onload=()=> ripReady=true;
+
+    // “Cīgas”
+    const imgCig = new Image(); imgCig.src='Cig.png'; let cigReady=false; imgCig.onload=()=> cigReady=true;
+
+    // Kartes foni
+    const imgTV = new Image(); imgTV.src='TV.png'; let tvReady=false;  imgTV.onload=()=> tvReady=true;
+    const imgRM = new Image(); imgRM.src='RM.png'; let rmReady=false;  imgRM.onload=()=> rmReady=true;
+
+    // ===== Palīglīdzekļi (uz nākamo skrējienu) =====
+    const NEXT = { shield:false, magnet:false, double:false };
+
+    // ===== Skrējiens =====
+    let run=null;
+    function newRun(){
+      const baseY = canvas.height - CFG.groundH;
+      return {
+        time:0, speed:CFG.initSpeed, dist:0, earned:0,
+        player:{ lane:1, x:canvas.width/2, y:baseY, vy:0, w:56, h:64, jumping:false, invul:0, shield:false },
+        obstacles:[], coinsArr:[], spawn:{obs:0, coin:0}, lastTs:performance.now(),
+        powerups:{ shield:false, magnet:false, double:false }, magnetTime:0
+      };
+    }
+    function applyPowerupsForRun(){
+      run.powerups = { ...NEXT };
+      if (run.powerups.shield) run.player.shield = true;
+      if (run.powerups.magnet) run.magnetTime = 15; // 15 s pēc Tava teksta
+      NEXT.shield = NEXT.magnet = NEXT.double = false; // vienreizēji
+    }
+
+    function show(el){ el.classList.add('show'); }
+    function hide(el){ el.classList.remove('show'); }
+
+    // ===== Pogas =====
+    UI.btnPlay.onclick = ()=> startRun();
+    UI.btnMap.onclick  = ()=> openMap();
+    UI.btnRetry.onclick = ()=> startRun();
+    UI.btnToMap.onclick = ()=> { hide(UI.over); openMap(); };
+    UI.btnRunFromMap.onclick = ()=> { closeMap(); startRun(); };
+    UI.btnReset.onclick = ()=> { JOURNEY.progress=0; JOURNEY.money=0; JOURNEY.best=0; saveJourney(); drawMap(); updateMapStats(); updateHud(); };
+    UI.btnBack.onclick = ()=> closeMap();
+
+    // Veikals
+    document.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.buy'); if (!btn) return;
+      const item  = btn.dataset.item;
+      const price = Number(btn.dataset.price||0);
+      if (JOURNEY.money < price) return;
+      JOURNEY.money -= price;
+      if (item==='shield') NEXT.shield = true;
+      if (item==='magnet') NEXT.magnet = true;
+      if (item==='double') NEXT.double = true;
+      saveJourney(); updateShopButtons(); UI.moneyNow.textContent = JOURNEY.money.toString(); updateHud();
+    });
+
+    // Ievade
+    addEventListener('keydown', e=>{
+      if (['ArrowLeft','ArrowRight','KeyA','KeyD','Space','KeyW','KeyP','KeyM'].includes(e.code)) e.preventDefault();
+      if (e.code==='ArrowLeft'||e.code==='KeyA') laneLeft();
+      if (e.code==='ArrowRight'||e.code==='KeyD') laneRight();
+      if (e.code==='Space'||e.code==='KeyW')     jump();
+      if (e.code==='KeyP') togglePause();
+      if (e.code==='KeyM') openMap();
+    });
+
+    // Režīmi
+    function startRun(){ hide(UI.start); hide(UI.over); hide(UI.map); STATE.mode='run'; run = newRun(); applyPowerupsForRun(); loop(); }
+    function endRun(){
+      STATE.mode='over';
+      const meters = Math.round(run.dist/100);
+      JOURNEY.progress = Math.min(JOURNEY.total, JOURNEY.progress + meters);
+      JOURNEY.best = Math.max(JOURNEY.best, meters);
+      JOURNEY.money += run.earned;
+      saveJourney();
+      UI.finalDist.textContent  = meters + ' m';
+      UI.finalCoins.textContent = run.earned.toString();
+      UI.moneyNow.textContent   = JOURNEY.money.toString();
+      updateShopButtons(); show(UI.over); updateHud();
+    }
+    function togglePause(){
+      if (STATE.mode!=='run') return;
+      STATE.mode='pause';
+      ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='#fff'; ctx.font='bold 42px system-ui'; ctx.textAlign='center';
+      ctx.fillText('PAUZE (P)', canvas.width/2, canvas.height/2);
+    }
+    addEventListener('keydown', e=>{
+      if (e.code==='KeyP' && STATE.mode==='pause'){ STATE.mode='run'; run.lastTs=performance.now(); loop(); }
+    });
+
+    function openMap(){ if (STATE.mode==='run') return; STATE.mode='map'; drawMap(); updateMapStats(); show(UI.map); }
+    function closeMap(){ hide(UI.map); STATE.mode='menu'; show(UI.start); }
+    function updateShopButtons(){
+      document.querySelectorAll('.buy').forEach(b=>{
+        const price = Number(b.dataset.price||0);
+        if (JOURNEY.money < price) b.setAttribute('disabled',''); else b.removeAttribute('disabled');
+      });
+    }
+
+    // Cikls
+    function loop(){
+      if (STATE.mode!=='run') return;
+      const now = performance.now();
+      const dt = Math.min(0.033, (now - run.lastTs)/1000); run.lastTs = now;
+      update(dt); draw(); requestAnimationFrame(loop);
+    }
+
+    // Update
+    function update(dt){
+      run.time += dt; run.speed += (CFG.speedGain/60)*dt*60;
+
+      // joslu pāreja
+      const targetX = laneX(run.player.lane), dx = targetX - run.player.x;
+      run.player.x += Math.sign(dx)*Math.min(Math.abs(dx), 14 + run.speed*0.02);
+
+      // invul
+      if (run.player.invul > 0) run.player.invul = Math.max(0, run.player.invul - dt);
+
+      // gravitācija/lēciens
+      if (run.player.jumping){
+        run.player.vy += CFG.gravity*dt; run.player.y += run.player.vy*dt;
+        const baseY = canvas.height - CFG.groundH;
+        if (run.player.y >= baseY){ run.player.y = baseY; run.player.jumping=false; run.player.vy=0; }
+      }
+
+      // spawns
+      run.spawn.obs += dt; if (run.spawn.obs >= CFG.obstacleEvery){ run.spawn.obs=0; spawnObstacle(); }
+      run.spawn.coin += dt; if (run.spawn.coin >= CFG.coinEvery){ run.spawn.coin=0; spawnCoinRow(); }
+
+      // kustība
+      const vy = run.speed * dt;
+
+      // >>> ŠEIT: barjeras (type === 'barrier') kustas 1.35× ātrāk
+      for (const o of run.obstacles) {
+        const mult = (o.type === 'barrier') ? CFG.barrierSpeedMult : 1;
+        o.y += vy * mult;
+      }
+
+      // cīgas krīt lēnāk
+      for (const c of run.coinsArr) c.y += vy * CFG.coinScrollRatio;
+
+      // magnēts (cīgām)
+      if (run.magnetTime > 0){
+        run.magnetTime -= dt;
+        for (const c of run.coinsArr){
+          if (c.collected) continue;
+          const d = dist(run.player.x, run.player.y-32, c.x, c.y);
+          if (d < CFG.magnetRadius){
+            const ang = Math.atan2((run.player.y-32) - c.y, run.player.x - c.x);
+            const pull = CFG.magnetPull * dt;
+            c.x += Math.cos(ang) * pull;
+            c.y += Math.sin(ang) * pull;
+          }
+        }
+      }
+
+      // filtrējam
+      run.obstacles = run.obstacles.filter(o=> o.y < canvas.height+120);
+      run.coinsArr  = run.coinsArr.filter(c=> (c.y < canvas.height+140) && !c.collected);
+
+      // sadursmes ar šķēršļiem
+      for (const o of run.obstacles){
+        if (o.lane===run.player.lane && aabb(run.player.x-28, run.player.y-64, 56,64, o.x-32,o.y-32,64,64)){
+          if (run.player.invul > 0) continue;
+          if (run.player.shield){ run.player.shield=false; run.player.invul=1.0; } else { endRun(); return; }
+        }
+      }
+
+      // cīgu savākšana
+      for (const c of run.coinsArr){
+        if (!c.collected && dist(run.player.x, run.player.y-32, c.x, c.y) < 30){
+          c.collected = true;
+          const gain = (run.powerups.double ? 2 : 1);
+          run.earned += gain;
+        }
+      }
+
+      // distance & HUD
+      run.dist += run.speed*dt;
+      updateHud(Math.round(run.dist/100));
+    }
+
+    function updateHud(scoreMeters){
+      UI.score.textContent = (scoreMeters ?? Math.round((run?.dist||0)/100)) + ' m';
+      const liveMoney = JOURNEY.money + (run?.earned||0);
+      UI.money.textContent = liveMoney.toString();
+      UI.best.textContent  = Math.max(JOURNEY.best, Math.round((run?.dist||0)/100)).toString();
+    }
+
+    // Zīmēšana
+    function draw(){
+      // fons
+      ctx.fillStyle='#0b1222'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      // ceļš
+      const y = canvas.height - CFG.groundH;
+      ctx.fillStyle='#1b2433'; ctx.fillRect(0,y,canvas.width,CFG.groundH);
+      // joslas
+      ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.lineWidth=2; ctx.setLineDash([16,24]);
+      for (let i=1;i<CFG.laneCount;i++){ const lx = laneX(i) - CFG.laneGap/2; ctx.beginPath(); ctx.moveTo(lx,y+6); ctx.lineTo(lx,canvas.height-6); ctx.stroke(); }
+      ctx.setLineDash([]);
+
+      // cīgas & šķēršļi
+      for (const c of run.coinsArr){ if (!c.collected) drawCig(c.x,c.y); }
+      for (const o of run.obstacles) drawObstacle(o);
+
+      // spēlētājs
+      drawPlayer();
+    }
+
+    // ===== Helperi =====
+    function laneX(idx){ const mid = canvas.width/2; return mid + (idx - (CFG.laneCount-1)/2)*CFG.laneGap; }
+    function laneLeft(){ if (STATE.mode==='run') run.player.lane = Math.max(0, run.player.lane-1); }
+    function laneRight(){ if (STATE.mode==='run') run.player.lane = Math.min(CFG.laneCount-1, run.player.lane+1); }
+    function jump(){ if (STATE.mode==='run' && !run.player.jumping){ run.player.jumping=true; run.player.vy=-CFG.jumpV; } }
+    function aabb(ax,ay,aw,ah,bx,by,bw,bh){ return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by; }
+    function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
+
+    function spawnObstacle(){
+      const lane=Math.floor(Math.random()*CFG.laneCount);
+      const type = ['cone','barrier','puddle'][Math.floor(Math.random()*3)];
+      run.obstacles.push({lane, x:laneX(lane), y:-80, type});
+    }
+    function spawnCoinRow(){
+      const lane=Math.floor(Math.random()*CFG.laneCount), x=laneX(lane), startY=-200-Math.random()*200, n=4+Math.floor(Math.random()*4);
+      for (let i=0;i<n;i++) run.coinsArr.push({ lane, x, y:startY - i*60, collected:false });
+    }
+
+    function drawPlayer(){
+      const p=run.player;
+      // ēna
+      ctx.globalAlpha=.5; ctx.fillStyle='#000';
+      ctx.beginPath(); ctx.ellipse(p.x, canvas.height-CFG.groundH+24, 38,12,0,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+      // ķermenis
+      ctx.fillStyle = p.shield ? '#8bdc8b' : '#34c759';
+      ctx.strokeStyle='#bdfcc9'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.roundRect(p.x-28, p.y-64, 56,64, 12); ctx.fill(); ctx.stroke();
+      // galva (Rain.png)
+      const headSize = 40, hx = p.x, hy = p.y - 78;
+      if (headReady) {
+        ctx.save(); ctx.beginPath(); ctx.arc(hx, hy, headSize/2, 0, Math.PI*2); ctx.clip();
+        ctx.drawImage(headImg, hx - headSize/2, hy - headSize/2, headSize, headSize);
+        ctx.restore();
+        ctx.strokeStyle = '#b9efff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, hy, headSize/2, 0, Math.PI*2); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(hx, hy, headSize/2, 0, Math.PI*2);
+        ctx.fillStyle='#5ac8fa'; ctx.fill(); ctx.strokeStyle='#b9efff'; ctx.lineWidth=2; ctx.stroke();
+      }
+    }
+
+    function drawObstacle(o){
+      ctx.save(); ctx.translate(o.x,o.y);
+      if (o.type==='cone'){           // BB.png
+        if (bbReady) ctx.drawImage(imgBB, -32, -32, 64, 64);
+        else {
+          ctx.fillStyle='#ff6b6b'; ctx.strokeStyle='#ffdede'; ctx.lineWidth=2;
+          ctx.beginPath(); ctx.moveTo(-22,24); ctx.lineTo(0,-24); ctx.lineTo(22,24); ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillStyle='#fff'; ctx.fillRect(-18,8,36,6);
+        }
+      } else if (o.type==='barrier'){ // VO.png (1.35× ātrāk kustas kustībā)
+        if (voReady) ctx.drawImage(imgVO, -32, -32, 64, 64);
+        else {
+          ctx.fillStyle='#f39c12'; ctx.strokeStyle='#ffe0b2'; ctx.lineWidth=3;
+          ctx.beginPath(); ctx.roundRect(-36,-12,72,36,6); ctx.fill(); ctx.stroke();
+          ctx.fillStyle='#333'; ctx.fillRect(-36,0,72,8);
+        }
+      } else {                        // puddle => rip.png
+        if (ripReady) ctx.drawImage(imgRip, -32, -32, 64, 64);
+        else {
+          ctx.fillStyle='rgba(80,140,220,0.9)';
+          ctx.beginPath(); ctx.ellipse(0,12,46,18,0,0,Math.PI*2); ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawCig(x,y){
+      ctx.save(); ctx.translate(x,y);
+      if (cigReady) {
+        ctx.drawImage(imgCig, -20, -20, 40, 40); // ~40px, centrēts
+      } else {
+        const t = performance.now()*0.005, r = 16 + Math.sin(t)*1.5;
+        ctx.fillStyle='#ffd54f'; ctx.strokeStyle='#fff1c2'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle='#ffecb3'; ctx.beginPath(); ctx.arc(0,0, r*0.55,0,Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // ===== KARTE =====
+    let MAP=null;
+    function buildMap(){
+      const c=UI.mapCanvas, w=c.width, h=c.height, m=50, pts=[]; let x=m, y=h-m, dx=(w-m*2)/12;
+      for (let i=0;i<13;i++){ pts.push([x,y]); x+=dx; y+=(i%2===0?-1:1)*(30+Math.random()*40); y=Math.max(m,Math.min(h-m,y)); }
+      for (let k=0;k<3;k++){ const i=2+k*3; pts.splice(i,0,[pts[i][0]-dx*0.3, pts[i][1]+(k%2?40:-40)]); }
+      const seg=[]; let total=0;
+      for (let i=0;i<pts.length-1;i++){ const a=pts[i], b=pts[i+1], d=Math.hypot(b[0]-a[0], b[1]-a[1]); seg.push(d); total+=d; }
+      MAP={pts,seg,total};
+    }
+    function pointAtRatio(r){
+      if(!MAP) buildMap(); let need=r*MAP.total; let x=MAP.pts[0][0], y=MAP.pts[0][1], i=1;
+      for (; i<MAP.pts.length; i++){
+        const a=MAP.pts[i-1], b=MAP.pts[i], d=MAP.seg[i-1];
+        if (need<=d){ const t=d===0?0:need/d; x=a[0]+(b[0]-a[0])*t; y=a[1]+(b[1]-a[1])*t; break; }
+        else need-=d;
+      }
+      return {x,y,i};
+    }
+
+    // Attēla "cover" zīmēšana taisnstūrī
+    function drawCoverImage(ctxm, img, x, y, w, h){
+      if (!img || !img.width || !img.height) return;
+      const iw=img.width, ih=img.height;
+      const scale = Math.max(w/iw, h/ih);
+      const dw=iw*scale, dh=ih*scale;
+      const dx=x+(w-dw)/2, dy=y+(h-dh)/2;
+      ctxm.drawImage(img, dx, dy, dw, dh);
+    }
+
+    function drawHouse(ctxm,x,y,color){
+      ctxm.save(); ctxm.translate(x,y);
+      ctxm.fillStyle=color; ctxm.strokeStyle='#fff3c0'; ctxm.lineWidth=2;
+      ctxm.beginPath(); ctxm.moveTo(-16,6); ctxm.lineTo(0,-16); ctxm.lineTo(16,6); ctxm.closePath(); ctxm.fill(); ctxm.stroke();
+      ctxm.fillStyle='#fff'; ctxm.fillRect(-10,6,20,12); ctxm.restore();
+    }
+    function drawFlag(ctxm,x,y,color){
+      ctxm.save(); ctxm.translate(x,y);
+      ctxm.strokeStyle=color; ctxm.lineWidth=3;
+      ctxm.beginPath(); ctxm.moveTo(0,-18); ctxm.lineTo(0,16); ctxm.stroke();
+      ctxm.fillStyle=color;
+      ctxm.beginPath(); ctxm.moveTo(0,-18); ctxm.lineTo(18,-12); ctxm.lineTo(0,-6); ctxm.closePath(); ctxm.fill(); ctxm.restore();
+    }
+    function drawMarker(ctxm,x,y,color){
+      ctxm.fillStyle=color; ctxm.strokeStyle='#eaffea'; ctxm.lineWidth=2;
+      ctxm.beginPath(); ctxm.arc(x,y,10,0,Math.PI*2); ctxm.fill(); ctxm.stroke();
+    }
+
+    function drawMap(){
+      const ctxm = UI.mapCanvas.getContext('2d'), w=UI.mapCanvas.width, h=UI.mapCanvas.height;
+      ctxm.clearRect(0,0,w,h);
+      if(!MAP) buildMap();
+
+      // Pilnekrāna fons 50/50
+      if (tvReady) drawCoverImage(ctxm, imgTV, 0, 0, Math.floor(w/2), h);
+      else { ctxm.fillStyle='#0b1526'; ctxm.fillRect(0,0,Math.floor(w/2),h); }
+      if (rmReady) drawCoverImage(ctxm, imgRM, Math.floor(w/2), 0, Math.ceil(w/2), h);
+      else { ctxm.fillStyle='#06101b'; ctxm.fillRect(Math.floor(w/2),0,Math.ceil(w/2),h); }
+
+      // Tumšs pārklājums lasāmībai
+      const shade = ctxm.createLinearGradient(0,0,w,0);
+      shade.addColorStop(0,   'rgba(0,0,0,0.35)');
+      shade.addColorStop(0.5, 'rgba(0,0,0,0.20)');
+      shade.addColorStop(1,   'rgba(0,0,0,0.35)');
+      ctxm.fillStyle = shade; ctxm.fillRect(0,0,w,h);
+
+      // Ceļš
+      ctxm.lineWidth=8; ctxm.lineCap='round'; ctxm.strokeStyle='#2f9bff';
+      ctxm.beginPath(); ctxm.moveTo(MAP.pts[0][0],MAP.pts[0][1]);
+      for (let i=1;i<MAP.pts.length;i++) ctxm.lineTo(MAP.pts[i][0],MAP.pts[i][1]);
+      ctxm.stroke();
+
+      // Progress
+      const ratio = JOURNEY.progress / JOURNEY.total, pos = pointAtRatio(ratio);
+      ctxm.strokeStyle='#34c759';
+      ctxm.beginPath();
+      ctxm.moveTo(MAP.pts[0][0],MAP.pts[0][1]);
+      for (let i=1;i<pos.i;i++) ctxm.lineTo(MAP.pts[i][0],MAP.pts[i][1]);
+      ctxm.lineTo(pos.x,pos.y); ctxm.stroke();
+
+      // Start/Finish/Markeris
+      const start = MAP.pts[0];
+      const fini  = MAP.pts[MAP.pts.length-1];
+      drawHouse(ctxm, fini[0], fini[1], '#ffd54f');
+      drawFlag(ctxm, start[0], start[1], '#ff6b6b');
+      drawMarker(ctxm, pos.x, pos.y, '#34c759');
+    }
+
+    function updateMapStats(){
+      UI.mapProgress.textContent = Math.round(JOURNEY.progress/JOURNEY.total*100) + '%';
+      UI.mapRemain.textContent   = (JOURNEY.total - JOURNEY.progress) + ' m';
+    }
+
+    // Splash (izvēlnes fons)
+    (function drawSplash(){
+      ctx.fillStyle='#09121e'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='#0f1c2e';
+      for (let i=0;i<24;i++){
+        const w=80+Math.random()*120, h=40+Math.random()*60, x=Math.random()*canvas.width, y=Math.random()*canvas.height*0.7;
+        ctx.fillRect(x,y,w,h);
+      }
+      ctx.fillStyle='#fff'; ctx.font='bold 42px system-ui'; ctx.textAlign='center';
+      ctx.fillText('Rainers: Ceļš uz mājām', canvas.width/2, canvas.height*0.4);
+      updateHud(0);
+    })();
+  </script>
+</body>
+</html>

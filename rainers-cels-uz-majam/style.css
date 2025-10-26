@@ -1,0 +1,64 @@
+* { box-sizing: border-box; }
+html, body {
+  margin:0; height:100%;
+  background:#04070d; color:#eaf2ff;
+  font-family:system-ui, Segoe UI, Roboto, Arial, sans-serif;
+  overflow:hidden;
+}
+#game { position:fixed; inset:0; display:block; }
+
+/* HUD paliek stūrī, tas nav overlay daļa */
+.hud {
+  position:fixed; top:10px; left:10px; z-index:10;
+  display:flex; gap:16px; align-items:center;
+  background:rgba(0,0,0,0.35);
+  padding:8px 12px; border-radius:10px;
+  backdrop-filter: blur(4px);
+  font-weight:700;
+}
+.hud .hint { font-weight:600; opacity:.85; }
+
+/* ==== OVERLAY | teksts precīzi pa vidu ekrānam ==== */
+.overlay {
+  position:fixed; inset:0; z-index:20;
+  display:grid; place-items:center;           /* <- centrē gan vertikāli, gan horizontāli */
+  background:rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  text-align:center; padding:24px;
+  opacity:0; pointer-events:none; transition:.2s ease;
+}
+.overlay.show { opacity:1; pointer-events:auto; }
+
+/* Iekšējais “panel” bloks, lai teksts būtu šaurāks un tiešām pa vidu */
+.panel {
+  width: min(680px, 92vw);
+  margin: 0 auto;
+  padding: 20px 16px;
+}
+.panel h1, .panel h2 { margin: 0 0 10px; line-height:1.15; }
+.panel p { margin: 8px 0 14px; opacity:.92; }
+
+.row { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+
+button {
+  padding:10px 16px; border:0; border-radius:10px; cursor:pointer; font-weight:800;
+  color:#072015; background: linear-gradient(135deg, #5ac8fa, #34c759);
+  box-shadow: 0 8px 24px rgba(52,199,89,.25);
+}
+button:hover { filter:brightness(1.06); }
+button:active { transform: translateY(1px); }
+
+/* KARTE */
+#map canvas {
+  background:#09131f; border-radius:12px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  max-width: min(900px, 90vw);
+  height: auto;
+}
+
+/* Tipogrāfija — pielāgojas ekrānam */
+@media (max-width: 480px) {
+  .panel h1 { font-size: 1.6rem; }
+  .panel h2 { font-size: 1.3rem; }
+  .hud { gap:10px; font-size: 0.95rem; }
+}
